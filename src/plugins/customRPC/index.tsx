@@ -128,11 +128,14 @@ async function createActivity(): Promise<Activity | undefined> {
                 start: Date.now()
             };
             break;
-        case TimestampMode.TIME:
-            activity.timestamps = {
-                start: Date.now() - (new Date().getHours() * 3600 + new Date().getMinutes() * 60 + new Date().getSeconds()) * 1000
+        case TimestampMode.TIME: {
+            const getElapsedToday = () => {
+                const now = new Date();
+                return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
             };
+            activity.timestamps = { start: Date.now() - getElapsedToday() * 1000 };
             break;
+        }
         case TimestampMode.CUSTOM:
             if (startTime || endTime) {
                 activity.timestamps = {};
@@ -200,7 +203,25 @@ async function createActivity(): Promise<Activity | undefined> {
     return activity;
 }
 
+let midnightTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleMidnightReset() {
+    if (midnightTimeout !== null) clearTimeout(midnightTimeout);
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    midnightTimeout = setTimeout(() => {
+        midnightTimeout = null;
+        setRpc();
+    }, midnight.getTime() - now.getTime());
+}
+
 export async function setRpc(disable?: boolean) {
+    if (midnightTimeout !== null) {
+        clearTimeout(midnightTimeout);
+        midnightTimeout = null;
+    }
+    
     const activity: Activity | undefined = await createActivity();
 
     FluxDispatcher.dispatch({
@@ -208,6 +229,10 @@ export async function setRpc(disable?: boolean) {
         activity: !disable ? activity : null,
         socketId: "CustomRPC",
     });
+
+    if (!disable && settings.store.timestampMode === TimestampMode.TIME) {
+        scheduleMidnightReset();
+    }
 }
 
 export default definePlugin({
@@ -221,7 +246,13 @@ export default definePlugin({
     settings,
 
     start: setRpc,
-    stop: () => setRpc(true),
+    stop: () => {
+        if (midnightTimeout !== null) {
+            clearTimeout(midnightTimeout);
+            midnightTimeout = null;
+        }
+        setRpc(true);
+    },
 
     // Discord hides buttons on your own Rich Presence for some reason. This patch disables that behaviour
     patches: [

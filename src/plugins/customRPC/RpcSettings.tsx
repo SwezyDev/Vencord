@@ -261,7 +261,7 @@ export function RPCSettings() {
                         value: TimestampMode.NOW
                     },
                     {
-                        label: "Same as your current time (not reset after 24h)",
+                        label: "Same as your current time",
                         value: TimestampMode.TIME
                     },
                     {
